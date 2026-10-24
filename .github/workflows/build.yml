@@ -12,43 +12,39 @@ jobs:
     - name: Checkout del código
       uses: actions/checkout@v4
 
-    - name: Descomprimir y buscar proyecto
+    - name: Descomprimir y aplanar proyecto
       run: |
-        # Descomprime el zip en una carpeta
-        unzip -o *.zip -d extract
-        
-        # Busca la carpeta que contiene el archivo gradlew
-        DIR=$(find extract -name "gradlew" -type f -printf '%h\n' | head -n 1)
-        
-        # Si no lo encuentra, se detiene y muestra qué había adentro
+        unzip -o *.zip -d temp_extract
+        DIR=$(find temp_extract -name "settings.gradle*" -printf '%h\n' | head -n 1)
         if [ -z "$DIR" ]; then
-          echo "❌ ERROR: No se encontró el archivo 'gradlew'."
-          echo "Revisa si el ZIP contiene los archivos de Android."
-          ls -R extract
+          echo "❌ No se encontró la carpeta del proyecto Android."
           exit 1
         fi
-        
-        # Guarda la ruta para los siguientes pasos
-        echo "PROJECT_DIR=$DIR" >> $GITHUB_ENV
-        echo "✅ Proyecto encontrado en: $DIR"
+        mv $DIR/* .
+        mv $DIR/.[!.]* . 2>/dev/null || true
+        rm -rf temp_extract
 
     - name: Configurar Java 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
 
-    - name: Dar permisos a Gradle
-      run: chmod +x gradlew
-      working-directory: ${{ env.PROJECT_DIR }}
+    - name: Preparar Gradle (Generar gradlew si falta)
+      run: |
+        if [ -f "gradlew" ]; then
+          chmod +x gradlew
+        else
+          echo "No se encontró gradlew, generando uno nuevo..."
+          gradle wrapper
+          chmod +x gradlew
+        fi
 
     - name: Compilar con Gradle
       run: ./gradlew assembleDebug
-      working-directory: ${{ env.PROJECT_DIR }}
 
     - name: Subir el APK
       uses: actions/upload-artifact@v4
       with:
         name: Taller-JP-APK
-        path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+        path: app/build/outputs/apk/debug/app-debug.apk
